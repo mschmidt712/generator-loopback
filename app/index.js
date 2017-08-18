@@ -39,6 +39,11 @@ module.exports = yeoman.Base.extend({
       type: Boolean,
     });
 
+    this.option('config-file', {
+      desc: g.f('Build based on config file.'),
+      type: String,
+    });
+
     this.option('explorer', {
       desc: g.f('Add {{Loopback Explorer}} to the project ({{true}} ' +
         'by default)'),
@@ -87,6 +92,23 @@ module.exports = yeoman.Base.extend({
     });
   },
 
+  getConfigData: function() {
+    var done = this.async();
+    var self = this;
+
+    if (this.options['config-file']) {
+      this.log(chalk.green(g.f(
+        'Configuration file found. Config \n' +
+        'file will be used to supply init properties.')));
+      fs.readFile(path.resolve(this.options['config-file']), ((err, buff) => {
+        self.configFile = JSON.parse(buff.toString()) || {};
+        done();
+      }).bind(this));
+    } else {
+      done();
+    }
+  },
+
   loadTemplates: function() {
     var done = this.async();
 
@@ -127,18 +149,25 @@ module.exports = yeoman.Base.extend({
 
     var name = this.name || this.dir || this.appname;
 
-    var prompts = [
-      {
-        name: 'appname',
-        message: g.f('What\'s the name of your application?'),
-        default: name,
-        validate: validateAppName,
-      },
-    ];
+    if (this.options['config-file'] && this.configFile.projectName) {
+      this.appname = this.configFile.projectName;
+      this.log.info(g.f(
+        'Project name being set as %s',
+        this.configFile.projectName));
+    } else {
+      var prompts = [
+        {
+          name: 'appname',
+          message: g.f('What\'s the name of your application?'),
+          default: name,
+          validate: validateAppName,
+        },
+      ];
 
-    return this.prompt(prompts).then(function(props) {
-      this.appname = props.appname || this.appname;
-    }.bind(this));
+      return this.prompt(prompts).then(function(props) {
+        this.appname = props.appname || this.appname;
+      }.bind(this));
+    }
   },
 
   configureDestinationDir: actions.configureDestinationDir,
@@ -169,9 +198,17 @@ module.exports = yeoman.Base.extend({
     }];
 
     var self = this;
-    return this.prompt(prompts).then(function(answers) {
-      self.options.loopbackVersion = answers.loopbackVersion;
-    }.bind(this));
+    if (this.options['config-file'] && this.configFile.lbVersion) {
+      this.log.info(g.f(
+        'Loopback version being set as %s',
+        this.configFile.lbVersion));
+      self.options.loopbackVersion = this.configFile.lbVersion;
+      // return this.configFile.lbVersion;
+    } else {
+      return this.prompt(prompts).then(function(answers) {
+        self.options.loopbackVersion = answers.loopbackVersion;
+      }.bind(this));
+    }
   },
 
   applyFilterOnTemplate: function() {
@@ -193,10 +230,18 @@ module.exports = yeoman.Base.extend({
     }];
 
     var self = this;
-    return this.prompt(prompts).then(function(answers) {
-      // Do NOT use name template as it's a method in the base class
-      self.wsTemplate = answers.wsTemplate;
-    }.bind(this));
+    if (this.options['config-file'] && this.configFile.template) {
+      this.log.info(g.f(
+        'Loopback template being set as %s',
+        this.configFile.template));
+      this.wsTemplate = this.configFile.template;
+      // return this.wsTemplate;
+    } else {
+      return this.prompt(prompts).then(function(answers) {
+        // Do NOT use name template as it's a method in the base class
+        self.wsTemplate = answers.wsTemplate;
+      }.bind(this));
+    }
   },
 
   initWorkspace: actions.initWorkspace,

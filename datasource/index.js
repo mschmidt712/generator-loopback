@@ -48,6 +48,11 @@ module.exports = yeoman.Base.extend({
       type: Boolean,
     });
 
+    this.option('config-file', {
+      desc: g.f('Build based on config file.'),
+      type: String,
+    });
+
     this.argument('name', {
       desc: g.f('Name of the datasource to create.'),
       required: false,
@@ -57,6 +62,23 @@ module.exports = yeoman.Base.extend({
 
   help: function() {
     return helpText.customHelp(this, 'loopback_datasource_usage.txt');
+  },
+
+  getConfigData: function() {
+    var done = this.async();
+    var self = this;
+
+    if (this.options['config-file']) {
+      this.log(chalk.green(g.f(
+        'Configuration file found. Config \n' +
+        'file will be used to supply init properties.')));
+      fs.readFile(path.resolve('../', this.options['config-file']), ((err, buff) => {
+        self.configFile = JSON.parse(buff.toString()).datasource || {};
+        done();
+      }).bind(this));
+    } else {
+      done();
+    }
   },
 
   setAppName: function() {
@@ -98,7 +120,13 @@ module.exports = yeoman.Base.extend({
   },
 
   askForName: function() {
-    if (!this.options.bluemix) {
+    if (this.options['config-file'] && this.configFile.name) {
+      this.name = this.configFile.name;
+      this.log.info(g.f(
+        'Datasource name being set as %s',
+        this.name));
+      return this.name;
+    } else if (!this.options.bluemix) {
       var prompts = [
         {
           name: 'name',
@@ -114,7 +142,15 @@ module.exports = yeoman.Base.extend({
   },
 
   askForParameters: function() {
-    if (!this.options.bluemix) {
+    if (this.options['config-file'] && this.configFile.connector) {
+      var connector = this.listOfAvailableConnectors.find(val => (
+        val.value === this.configFile.connector));
+      this.log.info(g.f(
+        'Datasource connector being set to %s',
+        connector.name));
+      this.connector = connector.value;
+      return this.connector;
+    } else if (!this.options.bluemix) {
       var displayName = chalk.yellow(this.name);
       var connectorChoices = this.listOfAvailableConnectors.concat(['other']);
       var prompts = [
@@ -219,22 +255,32 @@ module.exports = yeoman.Base.extend({
 
     if (!prompts.length) return reportWarnings();
 
-    return this.prompt(prompts).then(function(props) {
-      for (var key in settings) {
-        var propType = settings[key].type;
-        if (propType === 'number') {
-          props[key] = Number(props[key]);
-        } else if (propType === 'array' || propType === 'object') {
-          if (props[key] == null || props[key] === '') {
-            delete props[key];
-          } else {
-            props[key] = JSON.parse(props[key]);
+    if (this.options['config-file'] && this.configFile.settings) {
+      this.settings = this.configFile.settings;
+      const settingKeys = Object.keys(this.settings);
+      settingKeys.forEach(settingKey => {
+        this.log.info(g.f(
+          '%s being set to %s', settingKey, this.settings[settingKey]));
+      });
+      return this.settings;
+    } else {
+      return this.prompt(prompts).then(function(props) {
+        for (var key in settings) {
+          var propType = settings[key].type;
+          if (propType === 'number') {
+            props[key] = Number(props[key]);
+          } else if (propType === 'array' || propType === 'object') {
+            if (props[key] == null || props[key] === '') {
+              delete props[key];
+            } else {
+              props[key] = JSON.parse(props[key]);
+            }
           }
         }
-      }
-      this.settings = props || {};
-      reportWarnings();
-    }.bind(this));
+        this.settings = props || {};
+        reportWarnings();
+      }.bind(this));
+    }
   },
 
   installConnector: function() {
@@ -269,19 +315,31 @@ module.exports = yeoman.Base.extend({
       },
     ];
 
-    return this.prompt(prompts).then(function(props) {
-      if (props.installConnector) {
-        this.npmInstall([npmModule], {'save': true});
-        done();
-      } else {
-        var moduleVersion = npmModule.split('@');
-        var dependency = {};
-        dependency[moduleVersion[0]] = moduleVersion[1];
-        jsonfileUpdater(path.join(this.projectDir, 'package.json')).append(
-          'dependencies', dependency, done
-        );
-      }
-    }.bind(this));
+    if (this.options['config-file'] && this.configFile.installConnector === true) {
+      this.npmInstall([npmModule], {'save': true});
+      done();
+    } else if (this.options['config-file'] && this.configFile.installConnector === false) {
+      var moduleVersion = npmModule.split('@');
+      var dependency = {};
+      dependency[moduleVersion[0]] = moduleVersion[1];
+      jsonfileUpdater(path.join(this.projectDir, 'package.json')).append(
+        'dependencies', dependency, done
+      );
+    } else {
+      return this.prompt(prompts).then(function(props) {
+        if (props.installConnector) {
+          this.npmInstall([npmModule], {'save': true});
+          done();
+        } else {
+          var moduleVersion = npmModule.split('@');
+          var dependency = {};
+          dependency[moduleVersion[0]] = moduleVersion[1];
+          jsonfileUpdater(path.join(this.projectDir, 'package.json')).append(
+            'dependencies', dependency, done
+          );
+        }
+      }.bind(this));
+    }
   },
 
   dataSource: function() {

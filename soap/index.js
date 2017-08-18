@@ -37,10 +37,32 @@ module.exports = yeoman.Base.extend({
       required: false,
       type: String,
     });
+
+    this.option('config-file', {
+      desc: g.f('Build based on config file.'),
+      type: String,
+    });
   },
 
   help: function() {
     return helpText.customHelp(this, 'loopback_soap_usage.txt'); // TODO (rashmihunt) add this .txt
+  },
+
+  getConfigData: function() {
+    var done = this.async();
+    var self = this;
+
+    if (this.options['config-file']) {
+      this.log(chalk.green(g.f(
+        'Configuration file found. Config \n' +
+        'file will be used to supply init properties.')));
+      fs.readFile(path.resolve('../', this.options['config-file']), ((err, buff) => {
+        self.configFile = JSON.parse(buff.toString()).soap || {};
+        done();
+      }).bind(this));
+    } else {
+      done();
+    }
   },
 
   loadProject: actions.loadProject,
@@ -90,20 +112,40 @@ module.exports = yeoman.Base.extend({
       choices: this.soapDataSourceNames,
     }];
 
-    return this.prompt(prompts).then(function(answers) {
-      this.selectedDSName = answers.dataSource;
-      var selectedDS;
-      for (var i in this.soapDataSources) {
-        var datasource = this.soapDataSources[i];
-        if (datasource.data.name === this.selectedDSName) {
-          self.selectedDS = datasource;
-          break;
-        }
+    if (this.options['config-file'] && this.configFile.datasource) {
+      this.selectedDS = this.soapDataSources.find(val => {
+        return val.data.name === this.configFile.datasource;
+      });
+
+      if (!this.selectedDS) {
+        throw new Error(
+          'No datasource found with the name ' +
+          'provided by the configuraiton file!'
+        );
       }
-      self.url = self.selectedDS.data.wsdl;
-      self.log(chalk.green(g.f('WSDL for datasource %s: %s',
-        this.selectedDSName, self.url)));
-    }.bind(this));
+
+      this.url = this.selectedDS.data.wsdl;
+      this.log.info(g.f(
+        'SOAP Datasource being set to %s',
+        self.selectedDS.data.name));
+      this.log(chalk.green(g.f('WSDL for datasource %s: %s',
+        self.selectedDS.data.name, self.url)));
+    } else {
+      return this.prompt(prompts).then(function(answers) {
+        this.selectedDSName = answers.dataSource;
+        var selectedDS;
+        for (var i in this.soapDataSources) {
+          var datasource = this.soapDataSources[i];
+          if (datasource.data.name === this.selectedDSName) {
+            self.selectedDS = datasource;
+            break;
+          }
+        }
+        self.url = self.selectedDS.data.wsdl;
+        self.log(chalk.green(g.f('WSDL for datasource %s: %s',
+          this.selectedDSName, self.url)));
+      }.bind(this));
+    }
   },
 
   // command:  slc loopback:soap
@@ -135,10 +177,28 @@ module.exports = yeoman.Base.extend({
       },
     ];
 
-    return this.prompt(prompts).then(function(answers) {
-      this.servieName = answers.service;
-      this.bindingNames = generator.getBindings(this.servieName);
-    }.bind(this));
+    if (this.options['config-file'] && this.configFile.service) {
+      this.serviceName = this.serviceNames.find(name => {
+        return name === this.configFile.service;
+      });
+
+      if (!this.serviceName) {
+        throw new Error(
+          'Service name provided by configuration file does not exist!'
+        );
+      }
+
+      this.bindingNames = generator.getBindings(this.serviceName);
+
+      this.log.info(g.f(
+        'SOAP Service being set to %s',
+        this.serviceName));
+    } else {
+      return this.prompt(prompts).then(function(answers) {
+        this.servieName = answers.service;
+        this.bindingNames = generator.getBindings(this.servieName);
+      }.bind(this));
+    }
   },
 
   askForBinding: function() {
@@ -150,10 +210,29 @@ module.exports = yeoman.Base.extend({
         choices: this.bindingNames,
       },
     ];
-    return this.prompt(prompts).then(function(answers) {
-      this.bindingName = answers.binding;
+
+    if (this.options['config-file'] && this.configFile.binding) {
+      this.bindingName = this.bindingNames.find(name => {
+        return name === this.configFile.binding;
+      });
+
+      if (!this.bindingName) {
+        throw new Error(
+          'Service name provided by configuration file does not exist!'
+        );
+      }
+
       this.operations = generator.getOperations(this.bindingName);
-    }.bind(this));
+
+      this.log.info(g.f(
+        'SOAP Binding being set to %s',
+        this.bindingName));
+    } else {
+      return this.prompt(prompts).then(function(answers) {
+        this.bindingName = answers.binding;
+        this.operations = generator.getOperations(this.bindingName);
+      }.bind(this));
+    }
   },
 
   askForOperation: function() {
@@ -168,9 +247,36 @@ module.exports = yeoman.Base.extend({
       },
     ];
 
-    return this.prompt(prompts).then(function(answers) {
-      this.operations = answers.operations;
-    }.bind(this));
+    if (this.options['config-file'] && this.configFile.operations) {
+      if (this.configFile.operations === 'all') {
+        this.operations = this.operations;
+      } else if (Array.isArray(this.configFile.operations)) {
+        const operations = this.operations.filter(op => {
+          return this.configFile.operations.includes(op);
+        });
+
+        this.operations = operations;
+      } else {
+        throw new Error(
+          'Operation config must be either an array of available operations ' +
+          'or all, to indicate all operations.');
+      }
+
+      if (this.operations.length === 0) {
+        throw new Error(
+          'No operations found that match values given in the ' +
+          'configuration file.'
+        );
+      }
+
+      this.log.info(g.f(
+        'The following SOAP operations are being built: %s',
+        this.operations));
+    } else {
+      return this.prompt(prompts).then(function(answers) {
+        this.operations = answers.operations;
+      }.bind(this));
+    }
   },
 
   generate: function() {

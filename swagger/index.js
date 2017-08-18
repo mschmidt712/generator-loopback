@@ -19,6 +19,7 @@ var helpers = require('../lib/helpers');
 var helpText = require('../lib/help');
 
 var fs = require('fs');
+var path = require('path');
 var async = require('async');
 
 // A list of flags to control whether a model should be generated
@@ -41,6 +42,11 @@ module.exports = yeoman.Base.extend({
       required: false,
       type: String,
     });
+
+    this.option('config-file', {
+      desc: g.f('Build based on config file.'),
+      type: String,
+    });
   },
 
   help: function() {
@@ -52,6 +58,23 @@ module.exports = yeoman.Base.extend({
   loadDataSources: actions.loadDataSources,
   addNullDataSourceItem: actions.addNullDataSourceItem,
 
+  getConfigData: function() {
+    var done = this.async();
+    var self = this;
+
+    if (this.options['config-file']) {
+      this.log(chalk.green(g.f(
+        'Configuration file found. Config \n' +
+        'file will be used to supply init properties.')));
+      fs.readFile(path.resolve('../', this.options['config-file']), ((err, buff) => {
+        self.configFile = JSON.parse(buff.toString()).swagger || {};
+        done();
+      }).bind(this));
+    } else {
+      done();
+    }
+  },
+
   askForSpecUrlOrPath: function() {
     var prompts = [
       {
@@ -61,9 +84,12 @@ module.exports = yeoman.Base.extend({
         validate: validateUrlOrFile,
       },
     ];
-    return this.prompt(prompts).then(function(answers) {
-      this.url = answers.url.trim();
-    }.bind(this));
+
+    if (!this.url) {
+      return this.prompt(prompts).then(function(answers) {
+        this.url = answers.url.trim();
+      }.bind(this));
+    }
   },
 
   swagger: function() {
@@ -180,21 +206,76 @@ module.exports = yeoman.Base.extend({
             choices: self.dataSources,
           },
         ];
-        return self.prompt(prompts).then(function(answers) {
-          self.dataSource = answers.dataSource;
-          answers.modelSelections.forEach(function(m) {
-            for (var i = 0, n = choices.length; i < n; i++) {
-              var c = choices[i];
-              if (c.name === m) {
-                self.selectedModels[c.modelName] =
-                  (c.flag === CONFLICT_DETECTED ?
-                    SELECTED_FOR_UPDATE : SELECTED_FOR_CREATE);
-                break;
+
+        // if (self.options['config-file'] &&
+        // self.configFile.models &&
+        // self.configFile.datasource) {
+        //   self.dataSource = self.dataSources.find(ds => {
+        //     return ds.value === self.configFile.datasource;
+        //   });
+
+        //   if (!self.dataSource) {
+        //     throw new Error(
+        //       'DataSource name provided by the configuration file ' +
+        //       'does not exist!'
+        //     );
+        //   }
+
+        //   self.log.info(g.f(
+        //     'REST Datasource being set to %s',
+        //     self.datasource));
+
+        //   if (self.configFile.models === 'all') {
+        //     self.selectedModels = self.selectedModels;
+        //   } else if (Array.isArray(self.configFile.model)) {
+        //     var selectedModels = Object.keys(self.selectedModels)
+        //       .filter(key => {
+        //         return self.configFile.model.includes(key);
+        //       });
+
+        //     var selectedModelsObj = selectedModels.reduce((obj, val) => {
+        //       obj[val] = self.selectedModels[val];
+        //       return obj;
+        //     }, {});
+
+        //     self.selectedModels = selectedModelsObj;
+        //   } else {
+        //     throw new Error(
+        //       'Models config must be either an array of available models ' +
+        //       'or "all", to indicate all operations.'
+        //     );
+        //   }
+
+        //   if (self.selectedModels.length === 0) {
+        //     throw new Error(
+        //       'No models found that match values given in the ' +
+        //       'configuration file.'
+        //     );
+        //   }
+
+        //   self.log.info(g.f(
+        //     'The following REST models are being build: %s',
+        //     Object.keys(self.selectedModels)));
+
+        //   done();
+        // } else {
+          return self.prompt(prompts).then(function(answers) {
+            self.dataSource = answers.dataSource;
+            answers.modelSelections.forEach(function(m) {
+              for (var i = 0, n = choices.length; i < n; i++) {
+                var c = choices[i];
+                if (c.name === m) {
+                  self.selectedModels[c.modelName] =
+                    (c.flag === CONFLICT_DETECTED ?
+                      SELECTED_FOR_UPDATE : SELECTED_FOR_CREATE);
+                  break;
+                }
               }
-            }
+            });
+            console.log(self.selectedModels);
+            done();
           });
-          done();
-        });
+        // }
       });
   },
 
