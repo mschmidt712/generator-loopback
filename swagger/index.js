@@ -207,58 +207,75 @@ module.exports = yeoman.Base.extend({
           },
         ];
 
-        // if (self.options['config-file'] &&
-        // self.configFile.models &&
-        // self.configFile.datasource) {
-        //   self.dataSource = self.dataSources.find(ds => {
-        //     return ds.value === self.configFile.datasource;
-        //   });
+        if (self.options['config-file'] &&
+        self.configFile.models &&
+        self.configFile.datasource) {
+          self.dataSource = self.dataSources.find(ds => {
+            return ds.value == self.configFile.datasource;
+          });
 
-        //   if (!self.dataSource) {
-        //     throw new Error(
-        //       'DataSource name provided by the configuration file ' +
-        //       'does not exist!'
-        //     );
-        //   }
+          if (!self.dataSource) {
+            throw new Error(
+              'DataSource name provided by the configuration file ' +
+              'does not exist!'
+            );
+          }
 
-        //   self.log.info(g.f(
-        //     'REST Datasource being set to %s',
-        //     self.datasource));
+          self.log.info(g.f(
+            'REST Datasource being set to %s',
+            self.dataSource.value));
 
-        //   if (self.configFile.models === 'all') {
-        //     self.selectedModels = self.selectedModels;
-        //   } else if (Array.isArray(self.configFile.model)) {
-        //     var selectedModels = Object.keys(self.selectedModels)
-        //       .filter(key => {
-        //         return self.configFile.model.includes(key);
-        //       });
+          if (self.configFile.models === 'all') {
+            self.selectedModels = Object.keys(self.selectedModels)
+              .reduce((obj, key) => {
+                const choice = choices.find(c => {
+                  return c.modelName === key;
+                });
+                obj[key] = (choice.flag === CONFLICT_DETECTED ?
+                      SELECTED_FOR_UPDATE : SELECTED_FOR_CREATE);
+                return obj;
+              }, {});
+          } else if (Array.isArray(self.configFile.models)) {
+            var selectedModels = Object.keys(self.selectedModels)
+              .filter(key => {
+                return self.configFile.models.includes(key);
+              });
 
-        //     var selectedModelsObj = selectedModels.reduce((obj, val) => {
-        //       obj[val] = self.selectedModels[val];
-        //       return obj;
-        //     }, {});
+            var selectedModelsObj = selectedModels.reduce((obj, val) => {
+              const choice = choices.find(c => {
+                return c.modelName === val;
+              });
+              obj[val] = (choice.flag === CONFLICT_DETECTED ?
+                    SELECTED_FOR_UPDATE : SELECTED_FOR_CREATE);
+              return obj;
+            }, {});
 
-        //     self.selectedModels = selectedModelsObj;
-        //   } else {
-        //     throw new Error(
-        //       'Models config must be either an array of available models ' +
-        //       'or "all", to indicate all operations.'
-        //     );
-        //   }
+            self.selectedModels = selectedModelsObj;
+          } else {
+            throw new Error(
+              'Models config must be either an array of available models ' +
+              'or "all", to indicate all operations.'
+            );
+          }
 
-        //   if (self.selectedModels.length === 0) {
-        //     throw new Error(
-        //       'No models found that match values given in the ' +
-        //       'configuration file.'
-        //     );
-        //   }
+          if (self.selectedModels.length === 0) {
+            throw new Error(
+              'No models found that match values given in the ' +
+              'configuration file.'
+            );
+          }
 
-        //   self.log.info(g.f(
-        //     'The following REST models are being build: %s',
-        //     Object.keys(self.selectedModels)));
+          self.log.info(g.f(
+            'The following REST models are being built:'
+          ));
+          Object.keys(self.selectedModels).forEach(model => {
+            self.log(chalk.green(g.f(
+              '%s', model
+            )));
+          });
 
-        //   done();
-        // } else {
+          done();
+        } else {
           return self.prompt(prompts).then(function(answers) {
             self.dataSource = answers.dataSource;
             answers.modelSelections.forEach(function(m) {
@@ -275,7 +292,7 @@ module.exports = yeoman.Base.extend({
             console.log(self.selectedModels);
             done();
           });
-        // }
+        }
       });
   },
 
