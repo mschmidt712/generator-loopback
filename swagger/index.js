@@ -210,9 +210,10 @@ module.exports = yeoman.Base.extend({
         if (self.options['config-file'] &&
         self.configFile.models &&
         self.configFile.datasource) {
-          self.dataSource = self.dataSources.find(ds => {
+          const dataSourceObj = self.dataSources.find(ds => {
             return ds.value == self.configFile.datasource;
           });
+          self.dataSource = dataSourceObj.value;
 
           if (!self.dataSource) {
             throw new Error(
@@ -289,7 +290,6 @@ module.exports = yeoman.Base.extend({
                 }
               }
             });
-            console.log(self.selectedModels);
             done();
           });
         }
